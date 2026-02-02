@@ -16,8 +16,9 @@ public class Order : EntityBase
     public decimal? Tax { get; private set; }
     public decimal Subtotal { get; private set; }
     public decimal TotalCost { get; private set; }
-    public PaymentMethod PaymentMethod { get; private set; }
+    public PaymentMethod PaymentMethod { get; private set; } = PaymentMethod.None;
     public bool IsPaid { get; private set; } = false;
+    public bool PriceLocked { get; private set; } = false;
 
     // Shipping 
     public string Country { get; private set; } = string.Empty;
@@ -26,7 +27,7 @@ public class Order : EntityBase
 
     #region Domain Methods
 
-    public void AddItem(OrderItem item, int quantity)
+    public void AddItem(OrderItem item, int quantity = 1)
     {
         if (quantity <= 0)
             throw new ArgumentOutOfRangeException(
@@ -35,9 +36,13 @@ public class Order : EntityBase
             throw new InvalidOperationException("Order is already paid");
         if (OrderStatus != OrderStatus.Draft)
             throw new InvalidOperationException("Cannot add item");
-        var orderItem = OrderItems.FirstOrDefault(x => x.Id == item.Id);
+        var orderItem = OrderItems.FirstOrDefault(x => x.ProductId == item.ProductId);
         if (orderItem != null)
-            orderItem.Quantity += quantity;
+        {
+            orderItem.IncreaseQuantity(quantity);
+            return;
+        }
+        item.IncreaseQuantity(quantity);
         OrderItems.Add(item);
     }
 
@@ -51,18 +56,18 @@ public class Order : EntityBase
         if (IsPaid)
             throw new InvalidOperationException("Order is already paid");
 
-        var orderItem = OrderItems.FirstOrDefault(x => x.Id == item.Id);
-        if (orderItem == null)
-            throw new InvalidOperationException("OrderItem not found");
-        if (orderItem.Quantity < quantity)
+        var orderItem = OrderItems.FirstOrDefault(x => x.ProductId == item.ProductId) ??
+         throw new InvalidOperationException("OrderItem not found");
+
+        if (quantity > orderItem.Quantity)
+            throw new InvalidOperationException("Quantity to remove exceeds item quantity");
+
+        if (orderItem.Quantity <= quantity)
         {
-            if (orderItem.Quantity == 0)
-            {
-                OrderItems.Remove(orderItem);
-            }
-            orderItem.Quantity -= quantity;
+            OrderItems.Remove(orderItem);
+            return;
         }
-        orderItem.Quantity -= quantity;
+        orderItem.DecreaseQuantity(quantity);
     }
 
     private decimal CalculateSubtotal() =>
@@ -72,25 +77,29 @@ public class Order : EntityBase
         subtotal - (subtotal * discountRate);
 
     private static decimal ApplyTax(decimal taxRate, decimal discountedSubtotal) =>
-         discountedSubtotal - (taxRate * discountedSubtotal);
+         discountedSubtotal * taxRate;
 
     public void MarkAsPaid()
     {
+        if (!PriceLocked)
+            throw new InvalidOperationException("Order price is locked");
         if (IsPaid)
             throw new InvalidOperationException("Order is already paid");
         if (OrderStatus != OrderStatus.Confirmed)
             throw new InvalidOperationException("Cannot mark as paid, Order is not confirmed");
-        if (TotalCost > 0)
+        if (TotalCost <= 0)
             throw new InvalidOperationException("Order Total cost must be greater than zero");
-
+        IsPaid = true;
     }
 
     public void SetPaymentMethod(PaymentMethod paymentMethod)
     {
         if (OrderStatus != OrderStatus.Confirmed)
             throw new InvalidOperationException("Cannot set payment method for non-confirmed order");
-        if (OrderStatus != OrderStatus.Confirmed)
-            throw new InvalidOperationException("Cannot set payment method for non-confirmed order");
+        if (IsPaid)
+            throw new InvalidOperationException("Order is already paid");
+        if (paymentMethod == PaymentMethod.None)
+            throw new InvalidOperationException("Invalid payment method");
         PaymentMethod = paymentMethod;
     }
 
@@ -103,13 +112,30 @@ public class Order : EntityBase
         Country = country;
         City = city;
         Street = street;
-    }
+    } // fixed 
 
-    public void PlaceOrder()
+    public void PlaceOrder(decimal taxRate, decimal discountRate)
     {
-        if (this.OrderStatus != OrderStatus.Draft)
-            throw new InvalidOperationException("Order is not active");
-        this.OrderStatus = OrderStatus.Placed;
+        if (OrderStatus != OrderStatus.Draft)
+            throw new InvalidOperationException("Only Draft Orders can be placed");
+        decimal subtotal = CalculateSubtotal();
+        decimal Total = CalculateTotalCost(taxRate, discountRate);
+        if (string.IsNullOrWhiteSpace(Country) ||
+            string.IsNullOrWhiteSpace(City) ||
+            string.IsNullOrWhiteSpace(Street))
+            throw new InvalidOperationException("Shipping address is not set");
+
+        if (OrderItems.Count == 0)
+            throw new InvalidOperationException("Order must have at least one item");
+        if (Total <= 0)
+            throw new InvalidOperationException("Order Total cost must be greater than zero");
+
+        TotalCost = Total;
+        Subtotal = subtotal;
+        Discount = discountRate;
+        Tax = taxRate;
+        OrderStatus = OrderStatus.Placed;
+        PriceLocked = true;
     }
 
     public void ConfirmOrder()
@@ -150,8 +176,8 @@ public class Order : EntityBase
     {
         var subtotal = CalculateSubtotal();
         var discounted = ApplyDiscount(subtotal, discountRate);
-        var tax = ApplyTax(taxRate, discounted);
-        return subtotal * tax;
+        var taxed = ApplyTax(taxRate, discounted);
+        return taxed;
     }
 
     #endregion

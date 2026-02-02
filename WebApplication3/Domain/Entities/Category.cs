@@ -30,35 +30,35 @@ public class Category : EntityBase
                 throw new InvalidOperationException("Parent cannot be the same");
             currentParent = currentParent.Parent;
         }
-        this.Parent = newParent;
-        this.ParentId = newParent.ParentId;
+        Parent = newParent;
+        ParentId = newParent.ParentId;
     }
 
     public void AddChild(Category newChild)
     {
-        if(this.Children.FirstOrDefault(x => x.Id == newChild.Id) == null)
+        if(Children.FirstOrDefault(x => x.Id == newChild.Id) == null)
             throw new InvalidOperationException("Child doesn't exist");
         if (newChild.Parent != null)
             throw new InvalidOperationException("Parent already exists");
         
         newChild.Parent = this;
-        newChild.ParentId = this.ParentId;
-        this.Children.Add(newChild);
+        newChild.ParentId = ParentId;
+        Children.Add(newChild);
             
     }
 
     public void RemoveChild(Category child)
     {
-        if(this.Children.FirstOrDefault(x => x.Id == child.Id) == null)
+        if(Children.FirstOrDefault(x => x.Id == child.Id) == null)
             throw new InvalidOperationException("Child doesn't exist");
         child.Parent = null;
         child.ParentId = null;
-        this.Children.Remove(child);
+        Children.Remove(child);
     }
 
-    public void Activate() => this.IsActive = true;
+    public void Activate() => IsActive = true;
     
-    public void Deactivate() => this.IsActive = false;
+    public void Deactivate() => IsActive = false;
     
     #endregion
 

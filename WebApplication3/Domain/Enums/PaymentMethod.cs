@@ -4,4 +4,5 @@ public enum PaymentMethod
 {
     CashOnDelivery,
     Online,
+    None,
 }

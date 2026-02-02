@@ -12,4 +12,19 @@ public class OrderItem : EntityBase
     public decimal Price { get; private set; }
     public string ProductName { get; private set; }
     public string ProductDescription { get; private set; }
+
+   public void IncreaseQuantity(int amount=1)
+   {
+       if (amount <= 0)
+           throw new ArgumentOutOfRangeException(nameof(amount), "Amount must be greater than zero");
+       Quantity += amount;
+   }
+   public void DecreaseQuantity(int amount=1)
+   {
+       if (amount <= 0)
+           throw new ArgumentOutOfRangeException(nameof(amount), "Amount must be greater than zero");
+       if (Quantity - amount < 0)
+           throw new InvalidOperationException("Quantity cannot be negative");
+       Quantity -= amount;
+   }
 }
